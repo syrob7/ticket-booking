@@ -5,6 +5,8 @@ import com.ticketbooking.exception.TicketBookingNotFoundException;
 import com.ticketbooking.model.*;
 import com.ticketbooking.repo.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,10 +15,8 @@ import javax.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,6 +24,7 @@ public class ReservationService {
 
     private static final String DATE_FORMATTER= "yyyy-MM-dd HH:mm";
 
+    private MessageSource messageSource;
     private MailService mailService;
 
     private MovieRepo movieRepo;
@@ -34,7 +35,7 @@ public class ReservationService {
     private ReservationRepo reservationRepo;
 
     @Autowired
-    public ReservationService(MovieRepo movieRepo, ScreeningRepo screeningRepo,
+    public ReservationService(MessageSource messageSource, MovieRepo movieRepo, ScreeningRepo screeningRepo,
                               ReservationRepo reservationRepo, RoomRepo roomRepo,
                               SeatRepo seatRepo, TicketRepo ticketRepo, MailService mailService) {
         this.movieRepo = movieRepo;
@@ -44,6 +45,7 @@ public class ReservationService {
         this.ticketRepo = ticketRepo;
         this.reservationRepo = reservationRepo;
         this.mailService = mailService;
+        this.messageSource = messageSource;
     }
 
     @Transactional(readOnly = true)
@@ -93,16 +95,16 @@ public class ReservationService {
     private ScreeningDto getScreeningDto(Long screeningId) {
         ScreeningDto screeningDto = new ScreeningDto();
 
-        Screening screening = screeningRepo.findById(screeningId).orElseThrow(
-                () -> new TicketBookingNotFoundException("Błąd: Seans " + String.valueOf(screeningId)));
+        Screening screening = screeningRepo.findById(screeningId)
+                .orElseThrow(getNotFoundExceptionSupplier("screening.not.found", new String [] {String.valueOf(screeningId)}));
 
         screeningDto.setDateTimeMovie(screening.getScreeningTime());
-        Movie movie = movieRepo.findById(screening.getMovie().getId()).orElseThrow(
-                () -> new TicketBookingNotFoundException("Błąd: Film " + String.valueOf(screening.getMovie().getId())));
+        Movie movie = movieRepo.findById(screening.getMovie().getId())
+                .orElseThrow(getNotFoundExceptionSupplier("movie.not.found", new String[] {String.valueOf(screening.getMovie().getId())}));
 
         screeningDto.setMovieTitle(movie.getTitle());
-        Room room = roomRepo.findById(screening.getRoom().getId()).orElseThrow(
-                () -> new TicketBookingNotFoundException("Błąd: Sala " + String.valueOf(screening.getRoom().getId())));
+        Room room = roomRepo.findById(screening.getRoom().getId())
+                .orElseThrow(getNotFoundExceptionSupplier("room.not.found", new String[] {String.valueOf(screening.getRoom().getId())}));
 
         screeningDto.setRoomNumber(room.getRoomNumber());
         List<Seat> seatAllList = seatRepo.findAllByRoomId(room.getId());
@@ -120,39 +122,77 @@ public class ReservationService {
         return screeningDto;
     }
 
+    private Supplier<TicketBookingNotFoundException> getNotFoundExceptionSupplier(String key, String[] values) {
+        return () -> new TicketBookingNotFoundException(getMessage(key, values));
+    }
+
+    private String getMessage(String key, String[] values) {
+        return messageSource.getMessage (key, values, LocaleContextHolder.getLocale());
+    }
+
     @Transactional
     public String makeReservation(ReservationDto reservationDto, HttpServletRequest request) {
         StringBuilder response = new StringBuilder();
-        Screening screening = screeningRepo.findById(reservationDto.getScreeningId()).orElseThrow(
-                () -> new TicketBookingNotFoundException("Błąd: Seans  " + String.valueOf(reservationDto.getScreeningId())));
+        Screening screening = screeningRepo.findById(reservationDto.getScreeningId())
+            .orElseThrow(getNotFoundExceptionSupplier("screening.not.found", new String[] {String.valueOf(reservationDto.getScreeningId())}));
 
         if (LocalDateTime.now().plusMinutes(15).isAfter(screening.getScreeningTime())) {
-            response.append("<H1>Upłynął czas na dokonanie rezerwacji</H1>");
+            response.append(getMessage("booking.time.expired", null));
         } else if (reservationDto.getTickets().isEmpty()) {
-            response.append("<H1>Rezerwacja powinna dotyczyć przynajmniej jednego miejsca</H1>");
+            response.append(getMessage("one.place.reservation.rule", null));
+        } else if (!checkClientName(reservationDto)) {
+            response.append(getMessage("name.reservation.rule", null));
+        } else if (!checkClientSurname(reservationDto)) {
+            response.append(getMessage("surname.reservation.rule", null));
         } else if (!checkSingleSeat(reservationDto, screening)) {
-            response.append("<H1>Rezerwowane miejsca powinny znajdować się obok wcześniej zarezerwowanych</H1>");
+            response.append(getMessage("new.place.reservation.rule", null));
         } else {
             Reservation reservation = saveReservation(reservationDto, screening);
             BigDecimal ticketsPrice = saveTickets(reservationDto, screening, reservation);
 
             sendReservationByMail(request, reservation.getId(), reservationDto.getMail());
             
-            response.append("<H1>Potwierdzenie rezerwacji</H1>");
-            response.append("<p>Rezerwacja dokonana na nazwisko:" + reservationDto.getName() + " " + reservationDto.getSurname() + "</p>");
-            response.append("<p>Kwota do zapłaty : " + ticketsPrice + "</p>");
-            response.append("<p>Potwierdzenie rezerwacji powinno być dokonane w ciągu 15 minut poprzez kliknięcie w link wysłany na podany adres mailowy.</p>");
+            response.append(getMessage("confirm.reservation.line.one", null));
+            response.append(getMessage("confirm.reservation.line.two", new String[] {reservationDto.getName(), reservationDto.getSurname()}));
+            response.append(getMessage("confirm.reservation.line.three", new String[] {ticketsPrice.toString()}));
+            response.append(getMessage("confirm.reservation.line.four", null));
         }
 
         return response.toString();
+    }
+
+    private boolean checkClientSurname(ReservationDto reservationDto) {
+        if(reservationDto.getSurname() == null || reservationDto.getSurname().length() < 3) return false;
+
+        String words[] = reservationDto.getSurname().split("\\-");
+        StringBuilder capitalizeWord = new StringBuilder();
+        for(String w:words){
+            String first = w.substring(0,1);
+            String afterfirst = w.substring(1);
+            capitalizeWord.append(first.toUpperCase());
+            capitalizeWord.append(afterfirst);
+            capitalizeWord.append(" ");
+        }
+
+        reservationDto.setSurname(capitalizeWord.toString().trim().replace(" ", "-"));
+
+        return true;
+    }
+
+    private boolean checkClientName(ReservationDto reservationDto) {
+
+        if(reservationDto.getName() == null || reservationDto.getName().length() < 3) return false;
+        reservationDto.setName(reservationDto.getName().substring(0, 1).toUpperCase() + reservationDto.getName().substring(1));
+
+        return true;
     }
 
     private void sendReservationByMail(HttpServletRequest request, Long reservationId, String mail) {
         try {
             String url = "http://" +
                     request.getServerName() + ":" + request.getServerPort() + request.getContextPath() +
-                    "/confirmReservation?reservationId=" + reservationId;
-            mailService.sendMail(mail, "Rezerwacja biletów", url, false);
+                    "/confirmReservation?reservationId=" + reservationId + "&language=pl";
+            mailService.sendMail(mail, getMessage("mail.subject.text", null), url, false);
         } catch (MessagingException e) {
             e.printStackTrace();
         }
@@ -260,10 +300,20 @@ public class ReservationService {
     }
 
     public void confirmReservation(Long reservationId) {
-        Reservation reservation = reservationRepo.findById(reservationId).orElseThrow(
-                () -> new TicketBookingNotFoundException("Błąd: Rezerwacja  " + String.valueOf(reservationId)));
-        reservation.setConfirmed(true);
+        Reservation reservation = reservationRepo.findById(reservationId)
+                .orElseThrow(getNotFoundExceptionSupplier("reservation.not.found", new String[]{String.valueOf(reservationId)}));
 
-        reservationRepo.save(reservation);
+        Screening screening = screeningRepo.findById(reservation.getScreening().getId())
+                .orElseThrow(getNotFoundExceptionSupplier("screening.not.found", new String[]{String.valueOf(reservation.getScreening().getId())}));
+
+        if (reservation.getReservationTime().plusMinutes(15).isAfter(LocalDateTime.now()) &&
+                LocalDateTime.now().plusMinutes(15).isBefore(screening.getScreeningTime())) {
+            reservation.setConfirmed(true);
+            reservationRepo.save(reservation);
+        } else {
+            throw new TicketBookingNotFoundException(getMessage("confirmation.time.expired", null));
+        }
+
+
     }
 }

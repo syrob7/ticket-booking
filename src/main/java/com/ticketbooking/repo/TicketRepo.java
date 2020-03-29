@@ -11,8 +11,9 @@ import java.util.List;
 @Repository
 public interface TicketRepo extends JpaRepository<Ticket, Long> {
 
-    @Query("select t.seat.id from Ticket t join t.reservation r " +
+    @Query("select t.seat.id from Ticket t join t.reservation r join t.screening s " +
             "where t.screening.id = :screeningId " +
-            "and (r.confirmed = true or r.reservationTime between (SYSTIMESTAMP - 0.010416) AND SYSTIMESTAMP)")
+            "and (r.confirmed = true " +
+            "or (r.reservationTime between (SYSTIMESTAMP - 0.010416) AND SYSTIMESTAMP and SYSTIMESTAMP < s.screeningTime - 0.010416))")
     List<Long> findAllReservedByScreeningId(@Param("screeningId") Long screeningId);
 }
