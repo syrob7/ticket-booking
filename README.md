@@ -1,8 +1,6 @@
 # ticket-booking
 
-Ticket booking app - install and run application
-Excecute installAndRunApp.bat file
-
+Ticket booking app - install and run application - excecute installAndRunApp.bat file
 
 Ticket booking app - curl scenarios
 
