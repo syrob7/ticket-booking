@@ -1,0 +1,18 @@
+﻿{
+	"screeningId": 1,
+	"name": "ad",
+	"surname": "sł",
+	"mail": "jborys@gazeta.pl",
+	    "tickets" : [{
+    		"ticketType":0,
+	        "seatId":2
+	    },
+	    {
+    		"ticketType":1,
+	        "seatId":3
+	    },
+	    {
+    		"ticketType":2,
+	        "seatId":4
+	    }]
+}
