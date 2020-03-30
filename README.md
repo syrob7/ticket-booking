@@ -1,4 +1,8 @@
 # ticket-booking
+
+Ticket booking app - install and run application
+Excecute installAndRunApp.bat file
+
 Ticket booking app - curl scenarios
 
 #scenario no. 1 - get a list of available screenings
