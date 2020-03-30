@@ -1,6 +1,7 @@
 # ticket-booking
 
 The application implements reservation confirmation as an additional task.
+In RESERVATIONS table I set up two reservations for screening_id = 1
 
 Ticket booking app - install and run application - excecute installAndRunApp.bat file
 
