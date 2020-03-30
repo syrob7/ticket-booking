@@ -299,7 +299,9 @@ public class ReservationService {
         return reservation;
     }
 
-    public void confirmReservation(Long reservationId) {
+    public String confirmReservation(Long reservationId) {
+        StringBuilder response = new StringBuilder();
+
         Reservation reservation = reservationRepo.findById(reservationId)
                 .orElseThrow(getNotFoundExceptionSupplier("reservation.not.found", new String[]{String.valueOf(reservationId)}));
 
@@ -310,10 +312,12 @@ public class ReservationService {
                 LocalDateTime.now().plusMinutes(15).isBefore(screening.getScreeningTime())) {
             reservation.setConfirmed(true);
             reservationRepo.save(reservation);
+
+            response.append(getMessage("reservation.confirmation", null));
         } else {
             throw new TicketBookingNotFoundException(getMessage("confirmation.time.expired", null));
         }
 
-
+        return response.toString();
     }
 }

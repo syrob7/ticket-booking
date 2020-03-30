@@ -36,7 +36,7 @@ public class ApiController {
     }
 
     @GetMapping(value = "/confirmReservation")
-    public void confirmReservation(@RequestParam Long reservationId) {
-        reservationService.confirmReservation(reservationId);
+    public String confirmReservation(@RequestParam Long reservationId) {
+        return reservationService.confirmReservation(reservationId);
     }
 }
