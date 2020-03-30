@@ -1,5 +1,7 @@
 # ticket-booking
 
+The application implements Reservation confirmation as an additional task.
+
 Ticket booking app - install and run application - excecute installAndRunApp.bat file
 
 Ticket booking app - curl scenarios
